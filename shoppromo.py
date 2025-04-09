@@ -53,7 +53,7 @@ stores = {
 }
 
 # Bot token
-BOT_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'
+BOT_TOKEN = '7668891438:AAG5Mj55BP6ZoGjCBS3EPd7Wf2ZXglz_1pY'
 
 # Start buyrug'i uchun handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
