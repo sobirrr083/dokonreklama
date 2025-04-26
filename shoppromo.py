@@ -1,6 +1,6 @@
 import logging
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 
 # Logging sozlamalari
 logging.basicConfig(
@@ -8,6 +8,15 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+# Admin IDs ro'yxati
+ADMIN_IDS = [12345678, 87654321]  # Bu yerga adminlarning telegram ID larini qo'shing
+
+# Conversation handler states
+EDIT_STORE_NAME, EDIT_STORE_DESC, EDIT_STORE_ADDRESS, EDIT_STORE_PHONE, EDIT_STORE_HOURS = range(5)
+ADD_PRODUCT_NAME, ADD_PRODUCT_PRICE, ADD_PRODUCT_IMAGE = range(5, 8)
+ADD_PROMOTION_TITLE, ADD_PROMOTION_DESC = range(8, 10)
+ADD_STORE_NAME, ADD_STORE_DESC, ADD_STORE_ADDRESS, ADD_STORE_PHONE, ADD_STORE_HOURS = range(10, 15)
 
 # Bizning do'konlar ma'lumotlari
 stores = {
@@ -52,19 +61,84 @@ stores = {
     }
 }
 
+# Aktsiyalar ma'lumotlari
+promotions = [
+    {
+        'title': 'Hafta aksiyasi',
+        'description': 'Juma-Yakshanba kunlari barcha elektronika mahsulotlariga 15% chegirma!'
+    },
+    {
+        'title': '1+1=3',
+        'description': 'Ikki dona kiyim xarid qilsangiz, uchinchisi sovg\'a!'
+    },
+    {
+        'title': 'Tug\'ilgan kun aksiyasi',
+        'description': 'Tug\'ilgan kuningizda 20% chegirma!'
+    }
+]
+
+# Bog'lanish ma'lumotlari
+contact_info = {
+    'phone': '+998 71 123 45 67',
+    'telegram': '@YourCompany',
+    'email': 'info@yourcompany.uz',
+    'website': 'www.yourcompany.uz',
+    'working_hours': '09:00 - 18:00, Dushanba-Shanba'
+}
+
 # Bot token
 BOT_TOKEN = '7668891438:AAG5Mj55BP6ZoGjCBS3EPd7Wf2ZXglz_1pY'
 
 # Start buyrug'i uchun handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    await update.message.reply_html(
-        f"Assalomu alaykum, {user.mention_html()}! 👋\n\n"
-        f"Do'konlarimiz botiga xush kelibsiz! Bu bot orqali siz:\n"
-        f"- Do'konlarimiz haqida ma'lumot olishingiz\n"
-        f"- Mahsulotlarni ko'rishingiz\n"
-        f"- Aktsiyalar va chegirmalar haqida bilib turishingiz mumkin\n\n"
-        f"Boshlash uchun quyidagi tugmalardan birini tanlang:",
+    user_id = user.id
+    
+    context.user_data['is_admin_mode'] = False
+    
+    if user_id in ADMIN_IDS:
+        await update.message.reply_html(
+            f"Assalomu alaykum, {user.mention_html()}! 👋\n\n"
+            f"Do'konlarimiz botiga xush kelibsiz! Bu bot orqali siz:\n"
+            f"- Do'konlarimiz haqida ma'lumot olishingiz\n"
+            f"- Mahsulotlarni ko'rishingiz\n"
+            f"- Aktsiyalar va chegirmalar haqida bilib turishingiz mumkin\n\n"
+            f"Siz ADMIN sifatida ro'yxatdan o'tgansiz. Admin panelga kirish uchun /admin buyrug'ini yuboring.\n\n"
+            f"Oddiy foydalanuvchi sifatida davom etish uchun quyidagi tugmalardan birini tanlang:",
+            reply_markup=get_main_menu()
+        )
+    else:
+        await update.message.reply_html(
+            f"Assalomu alaykum, {user.mention_html()}! 👋\n\n"
+            f"Do'konlarimiz botiga xush kelibsiz! Bu bot orqali siz:\n"
+            f"- Do'konlarimiz haqida ma'lumot olishingiz\n"
+            f"- Mahsulotlarni ko'rishingiz\n"
+            f"- Aktsiyalar va chegirmalar haqida bilib turishingiz mumkin\n\n"
+            f"Boshlash uchun quyidagi tugmalardan birini tanlang:",
+            reply_markup=get_main_menu()
+        )
+
+# Admin panelga kirish
+async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("Siz admin emas ekansiz. Bu buyruq faqat adminlar uchun.")
+        return
+    
+    context.user_data['is_admin_mode'] = True
+    
+    await update.message.reply_text(
+        "Admin panelga xush kelibsiz! Nimani o'zgartirmoqchisiz?",
+        reply_markup=get_admin_menu()
+    )
+
+# Admin paneldan chiqish
+async def exit_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['is_admin_mode'] = False
+    
+    await update.message.reply_text(
+        "Admin paneldan chiqildi. Oddiy foydalanuvchi rejimiga o'tildi.",
         reply_markup=get_main_menu()
     )
 
@@ -74,6 +148,15 @@ def get_main_menu():
         ['🏪 Do\'konlar', '🛍 Mahsulotlar'],
         ['🔥 Aktsiyalar', '💬 Biz haqimizda'],
         ['📞 Bog\'lanish']
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+# Admin menyu uchun klaviatura
+def get_admin_menu():
+    keyboard = [
+        ['🏪 Do\'konlarni boshqarish', '🛍 Mahsulotlarni boshqarish'],
+        ['🔥 Aktsiyalarni boshqarish', '📞 Bog\'lanish ma\'lumotlarini boshqarish'],
+        ['👤 Oddiy rejimga qaytish']
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -225,11 +308,12 @@ async def about_us(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # Aktsiyalar
-async def promotions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def promotions_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_text = "*🔥 AKTUAL AKTSIYALAR 🔥*\n\n"
-    message_text += "1. *Hafta aksiyasi* - Juma-Yakshanba kunlari barcha elektronika mahsulotlariga 15% chegirma!\n\n"
-    message_text += "2. *1+1=3* - Ikki dona kiyim xarid qilsangiz, uchinchisi sovg'a!\n\n"
-    message_text += "3. *Tug'ilgan kun aksiyasi* - Tug'ilgan kuningizda 20% chegirma!\n\n"
+    
+    for i, promo in enumerate(promotions, 1):
+        message_text += f"{i}. *{promo['title']}* - {promo['description']}\n\n"
+    
     message_text += "Aktsiyalar vaqtinchalik. Batafsil ma'lumot olish uchun do'konlarimizga tashrif buyuring."
     
     await update.message.reply_text(
@@ -240,108 +324,279 @@ async def promotions(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Bog'lanish
 async def contact_us(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_text = "*Biz bilan bog'lanish*\n\n"
-    message_text += "📞 Call-markaz: +998 71 123 45 67\n"
-    message_text += "📱 Telegram: @YourCompany\n"
-    message_text += "📧 Email: info@yourcompany.uz\n"
-    message_text += "🌐 Veb-sayt: www.yourcompany.uz\n\n"
-    message_text += "Ish vaqti: 09:00 - 18:00, Dushanba-Shanba"
+    message_text += f"📞 Call-markaz: {contact_info['phone']}\n"
+    message_text += f"📱 Telegram: {contact_info['telegram']}\n"
+    message_text += f"📧 Email: {contact_info['email']}\n"
+    message_text += f"🌐 Veb-sayt: {contact_info['website']}\n\n"
+    message_text += f"Ish vaqti: {contact_info['working_hours']}"
     
     await update.message.reply_text(
         message_text,
         parse_mode='Markdown'
     )
 
-# Matnli xabarlar bilan ishlash
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
+# Admin: Do'konlarni boshqarish
+async def manage_stores(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = []
+    for store_id, store_info in stores.items():
+        keyboard.append([InlineKeyboardButton(store_info['name'], callback_data=f"admin_store_{store_id}")])
     
-    if text == '🏪 Do\'konlar':
-        await show_stores(update, context)
-    elif text == '🛍 Mahsulotlar':
-        keyboard = []
-        for store_id, store_info in stores.items():
-            keyboard.append([InlineKeyboardButton(f"{store_info['name']} mahsulotlari", callback_data=f"products_{store_id}")])
-        
-        keyboard.append([InlineKeyboardButton("⬅️ Orqaga", callback_data="back_to_main")])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_text(
-            "Qaysi do'kon mahsulotlarini ko'rmoqchisiz:",
-            reply_markup=reply_markup
-        )
-    elif text == '🔥 Aktsiyalar':
-        await promotions(update, context)
-    elif text == '💬 Biz haqimizda':
-        await about_us(update, context)
-    elif text == '📞 Bog\'lanish':
-        await contact_us(update, context)
-    else:
-        await update.message.reply_text(
-            "Tushunarsiz buyruq. Iltimos, quyidagi tugmalardan foydalaning.",
-            reply_markup=get_main_menu()
-        )
-
-# Tugmalar bosilganda
-async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    data = query.data
+    keyboard.append([InlineKeyboardButton("➕ Yangi do'kon qo'shish", callback_data="admin_add_store")])
+    keyboard.append([InlineKeyboardButton("⬅️ Orqaga", callback_data="back_to_admin")])
     
-    if data == "back_to_main":
-        await query.message.delete()
-        await query.message.reply_text(
-            "Asosiy menyu",
-            reply_markup=get_main_menu()
-        )
-    elif data == "back_to_stores":
-        keyboard = []
-        for store_id, store_info in stores.items():
-            keyboard.append([InlineKeyboardButton(store_info['name'], callback_data=f"store_{store_id}")])
-        
-        keyboard.append([InlineKeyboardButton("⬅️ Orqaga", callback_data="back_to_main")])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await query.edit_message_text(
-            "Quyidagi do'konlarimizdan birini tanlang:",
-            reply_markup=reply_markup
-        )
-    elif data.startswith("store_"):
-        await store_info(update, context)
-    elif data.startswith("products_"):
-        await store_products(update, context)
-    elif data.startswith("location_"):
-        await store_location(update, context)
-    elif data.startswith("order_"):
-        await order_products(update, context)
-
-# Bog'lanish uchun ma'lumotlarni olish
-async def contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     await update.message.reply_text(
-        "Iltimos, ismingizni, telefon raqamingizni va qiziqtirgan mahsulotingizni yozing. "
-        "Masalan:\n\n"
-        "Ism: Aziz\n"
-        "Telefon: +998901234567\n"
-        "Mahsulot: iPhone 15"
+        "Do'konlarni boshqarish paneli. Quyidagi do'konlardan birini tanlang yoki yangi do'kon qo'shing:",
+        reply_markup=reply_markup
     )
-    context.user_data['waiting_for_contact'] = True
 
-# Asosiy funksiya
-def main():
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
+# Admin: Do'kon ma'lumotlarini ko'rsatish
+async def admin_store_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
     
-    # Buyruqlar uchun handlerlar
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("contact", contact))
+    store_id = query.data.split('_')[2]
+    store = stores[store_id]
     
-    # Tugmalar uchun handlerlar
-    application.add_handler(CallbackQueryHandler(button_click))
+    message_text = f"*{store['name']}*\n\n"
+    message_text += f"*Ma'lumot:* {store['description']}\n"
+    message_text += f"*Manzil:* {store['address']}\n"
+    message_text += f"*Telefon:* {store['phone']}\n"
+    message_text += f"*Ish vaqti:* {store['working_hours']}\n\n"
     
-    # Xabarlar uchun handler
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    keyboard = [
+        [InlineKeyboardButton("✏️ Nomini o'zgartirish", callback_data=f"edit_store_name_{store_id}")],
+        [InlineKeyboardButton("✏️ Ma'lumotini o'zgartirish", callback_data=f"edit_store_desc_{store_id}")],
+        [InlineKeyboardButton("✏️ Manzilni o'zgartirish", callback_data=f"edit_store_address_{store_id}")],
+        [InlineKeyboardButton("✏️ Telefonni o'zgartirish", callback_data=f"edit_store_phone_{store_id}")],
+        [InlineKeyboardButton("✏️ Ish vaqtini o'zgartirish", callback_data=f"edit_store_hours_{store_id}")],
+        [InlineKeyboardButton("📦 Mahsulotlarni boshqarish", callback_data=f"admin_products_{store_id}")],
+        [InlineKeyboardButton("❌ Do'konni o'chirish", callback_data=f"delete_store_{store_id}")],
+        [InlineKeyboardButton("⬅️ Orqaga", callback_data="back_to_manage_stores")]
+    ]
     
-    # Botni ishga tushirish
-    application.run_polling()
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        text=message_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
 
-if __name__ == '__main__':
-    main()
+# Admin: Do'kon nomini o'zgartirish
+async def edit_store_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    store_id = query.data.split('_')[3]
+    context.user_data['editing_store'] = store_id
+    
+    await query.edit_message_text(
+        f"Iltimos, \"{stores[store_id]['name']}\" do'koni uchun yangi nomni kiriting:",
+        parse_mode='Markdown'
+    )
+    
+    return EDIT_STORE_NAME
+
+async def process_edit_store_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    store_id = context.user_data['editing_store']
+    new_name = update.message.text
+    
+    stores[store_id]['name'] = new_name
+    
+    await update.message.reply_text(
+        f"Do'kon nomi muvaffaqiyatli o'zgartirildi: *{new_name}*",
+        parse_mode='Markdown',
+        reply_markup=get_admin_menu()
+    )
+    
+    return ConversationHandler.END
+
+# Admin: Do'kon ma'lumotini o'zgartirish
+async def edit_store_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    store_id = query.data.split('_')[3]
+    context.user_data['editing_store'] = store_id
+    
+    await query.edit_message_text(
+        f"Iltimos, \"{stores[store_id]['name']}\" do'koni uchun yangi ma'lumotni kiriting:",
+        parse_mode='Markdown'
+    )
+    
+    return EDIT_STORE_DESC
+
+async def process_edit_store_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    store_id = context.user_data['editing_store']
+    new_desc = update.message.text
+    
+    stores[store_id]['description'] = new_desc
+    
+    await update.message.reply_text(
+        f"Do'kon ma'lumoti muvaffaqiyatli o'zgartirildi.",
+        reply_markup=get_admin_menu()
+    )
+    
+    return ConversationHandler.END
+
+# Admin: Do'kon manzilini o'zgartirish
+async def edit_store_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    store_id = query.data.split('_')[3]
+    context.user_data['editing_store'] = store_id
+    
+    await query.edit_message_text(
+        f"Iltimos, \"{stores[store_id]['name']}\" do'koni uchun yangi manzilni kiriting:",
+        parse_mode='Markdown'
+    )
+    
+    return EDIT_STORE_ADDRESS
+
+async def process_edit_store_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    store_id = context.user_data['editing_store']
+    new_address = update.message.text
+    
+    stores[store_id]['address'] = new_address
+    
+    await update.message.reply_text(
+        f"Do'kon manzili muvaffaqiyatli o'zgartirildi.",
+        reply_markup=get_admin_menu()
+    )
+    
+    return ConversationHandler.END
+
+# Admin: Do'kon telefonini o'zgartirish
+async def edit_store_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    store_id = query.data.split('_')[3]
+    context.user_data['editing_store'] = store_id
+    
+    await query.edit_message_text(
+        f"Iltimos, \"{stores[store_id]['name']}\" do'koni uchun yangi telefon raqamini kiriting:",
+        parse_mode='Markdown'
+    )
+    
+    return EDIT_STORE_PHONE
+
+async def process_edit_store_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    store_id = context.user_data['editing_store']
+    new_phone = update.message.text
+    
+    stores[store_id]['phone'] = new_phone
+    
+    await update.message.reply_text(
+        f"Do'kon telefon raqami muvaffaqiyatli o'zgartirildi.",
+        reply_markup=get_admin_menu()
+    )
+    
+    return ConversationHandler.END
+
+# Admin: Do'kon ish vaqtini o'zgartirish
+async def edit_store_hours(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    store_id = query.data.split('_')[3]
+    context.user_data['editing_store'] = store_id
+    
+    await query.edit_message_text(
+        f"Iltimos, \"{stores[store_id]['name']}\" do'koni uchun yangi ish vaqtini kiriting:",
+        parse_mode='Markdown'
+    )
+    
+    return EDIT_STORE_HOURS
+
+async def process_edit_store_hours(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    store_id = context.user_data['editing_store']
+    new_hours = update.message.text
+    
+    stores[store_id]['working_hours'] = new_hours
+    
+    await update.message.reply_text(
+        f"Do'kon ish vaqti muvaffaqiyatli o'zgartirildi.",
+        reply_markup=get_admin_menu()
+    )
+    
+    return ConversationHandler.END
+
+# Admin: Do'konni o'chirish
+async def delete_store(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    store_id = query.data.split('_')[2]
+    store_name = stores[store_id]['name']
+    
+    del stores[store_id]
+    
+    await query.edit_message_text(
+        f"*{store_name}* do'koni muvaffaqiyatli o'chirildi!",
+        parse_mode='Markdown'
+    )
+    
+    # Qayta do'konlar ro'yxatini ko'rsatamiz
+    keyboard = []
+    for store_id, store_info in stores.items():
+        keyboard.append([InlineKeyboardButton(store_info['name'], callback_data=f"admin_store_{store_id}")])
+    
+    keyboard.append([InlineKeyboardButton("➕ Yangi do'kon qo'shish", callback_data="admin_add_store")])
+    keyboard.append([InlineKeyboardButton("⬅️ Orqaga", callback_data="back_to_admin")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        text="Do'konlarni boshqarish paneli. Quyidagi do'konlardan birini tanlang yoki yangi do'kon qo'shing:",
+        reply_markup=reply_markup
+    )
+
+# Admin: Yangi do'kon qo'shish
+async def add_store(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    await query.edit_message_text(
+        "Yangi do'kon qo'shish. Iltimos, do'kon nomini kiriting:",
+        parse_mode='Markdown'
+    )
+    
+    return ADD_STORE_NAME
+
+async def process_add_store_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    new_store_name = update.message.text
+    context.user_data['new_store'] = {'name': new_store_name, 'products': []}
+    
+    await update.message.reply_text(
+        f"Do'kon nomi: *{new_store_name}*\n\nEndi do'kon tavsifini kiriting:",
+        parse_mode='Markdown'
+    )
+    
+    return ADD_STORE_DESC
+
+async def process_add_store_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    new_store_desc = update.message.text
+    context.user_data['new_store']['description'] = new_store_desc
+    
+    await update.message.reply_text(
+        f"Do'kon tavsifi saqlandi.\n\nEndi do'kon manzilini kiriting:"
+    )
+    
+    return ADD_STORE_ADDRESS
+
+async def process_add_store_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    new_store_address = update.message.text
+    context.user_data['new_store']['address'] = new_store_address
+    
+    await update.message.reply_text(
+        f"Do'kon manzili saqlandi.\n\nEndi do'kon telefon raqamini kiriting:"
+    )
+    
+    return ADD_STORE_PHONE
+
+async def process_add_store_phone(update: Update
